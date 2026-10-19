@@ -26,3 +26,4 @@ Tests: `/workspace/dialysis-tests/test_app.py` (Playwright, Gumroad mocked).
 - Terms now name the operator only as “Dialysis Log”; `TERMS_VERSION` → 2026-10-14 (users re-agree once).
 - Support and refunds go through Gumroad only. No email address anywhere.
 - Spanish text (`i18n-es.js`, `*-es.html`) is machine-prepared; review by a native Spanish speaker is recommended.
+- **PD day page (PREVIEW branch pd-day-preview, Pro):** More → PD day page. Four exchanges per day (time, fill, drain); total fluid removed = drained minus filled, plain subtraction, no advice. Rows missing a fill or drain are left out of the total. Stored in `pd` in localStorage, included in backup/restore and CSV (pd_fill, pd_drain, pd_removed rows). Spanish strings in i18n-es.js need a native-speaker review like the rest.

@@ -37,7 +37,7 @@
 
   /* ---------------- state ---------------- */
   function defaults() {
-    return { v: 1, fluids: [], sessions: [], labs: [], meds: [], settings: {
+    return { v: 1, fluids: [], sessions: [], labs: [], meds: [], pd: {}, settings: {
       setupDone: false, fluidUnit: 'oz', weightUnit: 'lb', ufUnit: 'L', limitMl: null, whose: '',
       cups: [{ id: 'c1', label: 'Small cup', ml: 4 * ML_PER_OZ }, { id: 'c2', label: 'Cup', ml: 8 * ML_PER_OZ }, { id: 'c3', label: 'Mug', ml: 12 * ML_PER_OZ }, { id: 'c4', label: 'Ice chips', ml: 2 * ML_PER_OZ }],
       textSize: 'large', dark: false, lang: null, license: null, lastBackup: null, backupNagAt: null, deviceId: null, persisted: null, createdAt: Date.now() } };
@@ -45,7 +45,7 @@
   function migrate(o) {
     var d = defaults();
     if (!o || typeof o !== 'object') return d;
-    var s = { v: 1, fluids: Array.isArray(o.fluids) ? o.fluids : [], sessions: Array.isArray(o.sessions) ? o.sessions : [], labs: Array.isArray(o.labs) ? o.labs : [], meds: Array.isArray(o.meds) ? o.meds : [], settings: Object.assign({}, d.settings, o.settings || {}) };
+    var s = { v: 1, fluids: Array.isArray(o.fluids) ? o.fluids : [], sessions: Array.isArray(o.sessions) ? o.sessions : [], labs: Array.isArray(o.labs) ? o.labs : [], meds: Array.isArray(o.meds) ? o.meds : [], pd: o.pd && typeof o.pd === 'object' && !Array.isArray(o.pd) ? o.pd : {}, settings: Object.assign({}, d.settings, o.settings || {}) };
     if (!Array.isArray(s.settings.cups)) s.settings.cups = d.settings.cups;
     s.fluids = s.fluids.filter(function (f) { return f && isFinite(f.ml) && f.ml > 0 && isFinite(f.t); });
     var L = s.settings.license;
@@ -74,7 +74,14 @@
     if (!prev || prev.postW == null || s.preW == null || (prev.wUnit || 'lb') !== (s.wUnit || 'lb')) return null;
     return round(s.preW - prev.postW, 1);
   }
-  window.DialysisCalc = { dayTotalMl: function (k) { return dayTotalMl(k); }, ML_PER_OZ: ML_PER_OZ };
+  /* ---- PD day page (Pro): four exchanges per day. Amounts kept in mL. Total removed = drained minus filled, plain subtraction only. ---- */
+  var PD_ROWS = 4;
+  function pdDay(k) { var d = S.pd && S.pd[k], out = [], i; for (i = 0; i < PD_ROWS; i++) { var r = d && d[i] || {}; out.push({ time: r.time || '', fill: isFinite(r.fill) && r.fill != null ? +r.fill : null, drain: isFinite(r.drain) && r.drain != null ? +r.drain : null }); } return out; }
+  function pdComplete(r) { return r.fill != null && r.drain != null; }
+  function pdNetMl(k) { var rows = pdDay(k).filter(pdComplete); if (!rows.length) return null; return rows.reduce(function (a, r) { return a + r.drain; }, 0) - rows.reduce(function (a, r) { return a + r.fill; }, 0); }
+  function pdHasData(r) { return r.fill != null || r.drain != null || !!r.time; }
+  function fmtNet(ml) { return (toUnit(ml) < 0 ? '\u2212' : '') + fmtFluid(Math.abs(ml)); }
+  window.DialysisCalc = { dayTotalMl: function (k) { return dayTotalMl(k); }, pdNetMl: function (k) { return pdNetMl(k); }, ML_PER_OZ: ML_PER_OZ };
 
   /* ---------------- license (Gumroad per-buyer keys, same approach as Rowbin) ---------------- */
   function isPro() { return !!(S.settings.license && S.settings.license.ok); }
@@ -201,7 +208,7 @@
     var cups = st.cups.map(function (c) { return '<button class="btn quick" data-act="add" data-id="' + esc(c.id) + '">+ ' + esc(cupLabel(c)) + '<small>' + esc(T(c.label)) + '</small></button>'; }).join('');
     var entries = S.fluids.filter(function (f) { return dayKey(f.t) === k; }).sort(function (a, b) { return b.t - a.t; });
     var nag = '';
-    var hasData = S.fluids.length + S.sessions.length > 0;
+    var hasData = S.fluids.length + S.sessions.length + Object.keys(S.pd || {}).length > 0;
     if (hasData && (!st.lastBackup || Date.now() - st.lastBackup > 14 * 86400000) && (!st.backupNagAt || Date.now() - st.backupNagAt > 3 * 86400000))
       nag = T('<div class="banner" id="backup-nag"><b>Don’t lose your log.</b> Your entries live only on this phone. Save a backup file now and then.<div class="row" style="margin-top:8px"><button class="btn sm" data-act="backup">Save backup</button><button class="btn sm alt" data-act="nag-later">Later</button></div></div>');
     return T('<main id="main"><h1>Today') + (st.whose ? ' · ' + esc(st.whose) : '') + '</h1><p class="muted small">' + esc(fmtDay(k)) + '</p>' + nag + head + sinceHtml +
@@ -354,6 +361,51 @@
       (S.meds.length ? T('<h2>Medicine list</h2><ul>') + S.meds.map(function (m) { return '<li>' + esc(m.name) + ' ' + esc([m.dose, m.when].filter(Boolean).join(' · ')) + '</li>'; }).join('') + '</ul>' : '') + disc() + '</main>' + nav('#/more');
   }
 
+
+  /* ---- Pro: PD day page ---- */
+  function pdFields(k) {
+    var u = fu() === 'oz' ? 'oz' : 'mL', rows = pdDay(k);
+    return rows.map(function (r, i) {
+      var n = i + 1, nm = T('Exchange ') + n, miss = pdHasData(r) && !pdComplete(r);
+      return '<fieldset class="card pdrow" id="pd-row-' + n + '"><legend>' + esc(nm) + '</legend>' +
+        '<label class="field"><span>' + T('Time') + '</span><input type="time" id="pd-time-' + n + '" value="' + esc(r.time) + '" aria-label="' + esc(nm + ' – ' + T('Time')) + '"></label>' +
+        '<div class="grid2"><label class="field"><span>' + T('Fill') + ' (' + u + ')</span><input type="text" inputmode="decimal" id="pd-fill-' + n + '" value="' + (r.fill == null ? '' : esc(toUnit(r.fill))) + '" autocomplete="off" aria-label="' + esc(nm + ' – ' + T('Fill') + ' (' + u + ')') + '"></label>' +
+        '<label class="field"><span>' + T('Drain') + ' (' + u + ')</span><input type="text" inputmode="decimal" id="pd-drain-' + n + '" value="' + (r.drain == null ? '' : esc(toUnit(r.drain))) + '" autocomplete="off" aria-label="' + esc(nm + ' – ' + T('Drain') + ' (' + u + ')') + '"></label></div>' +
+        '<p class="small muted" id="pd-miss-' + n + '"' + (miss ? '' : ' hidden') + '>' + T('Needs both amounts to count.') + '</p>' +
+        '<button type="button" class="btn sm alt" data-act="pd-clear" data-id="' + n + '" aria-label="' + esc(T('Clear') + ' ' + nm) + '">' + T('Clear') + '</button></fieldset>';
+    }).join('');
+  }
+  function pdTotalHtml(net) { return net == null ? '–' : esc(fmtNet(net)); }
+  function vPD(k) {
+    if (!isPro()) return proGate(T('PD day page'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k || '')) k = today();
+    var prev = dayKey(parseDay(k).getTime() - 43200000), next = dayKey(parseDay(k).getTime() + 86400000 + 43200000), isToday = k >= today();
+    return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>PD day</h1>') +
+      '<div class="row pdnav"><a class="btn sm alt" href="#/pd/' + prev + '" id="pd-prev">‹ ' + T('Previous day') + '</a>' + (isToday ? '<span></span>' : '<a class="btn sm alt" href="#/pd/' + next + '" id="pd-next">' + T('Next day') + ' ›</a>') + '</div>' +
+      '<p class="muted" id="pd-date"><b>' + esc(fmtDay(k)) + '</b></p>' +
+      '<div class="card status" aria-live="polite"><div class="small"><b>' + T('Total fluid removed') + '</b></div><div class="big-num" id="pd-total">' + pdTotalHtml(pdNetMl(k)) + '</div><div class="small">' + T('Drained minus filled') + '</div></div>' +
+      '<form id="pdform" autocomplete="off" data-day="' + k + '">' + pdFields(k) + '<button class="btn" type="submit" id="pd-save">' + T('Save day') + '</button></form>' +
+      '<p class="small muted">' + T('Saved only on this phone.') + '</p>' + disc() + '</main>' + nav('#/more');
+  }
+  function readPdForm() {
+    var rows = [], bad = [];
+    for (var n = 1; n <= PD_ROWS; n++) {
+      var row = { time: $('#pd-time-' + n).value || '', fill: null, drain: null };
+      [['fill', T('Fill')], ['drain', T('Drain')]].forEach(function (p) {
+        var v = num($('#pd-' + p[0] + '-' + n).value);
+        if (isNaN(v) || (v != null && v < 0)) bad.push(T('Exchange ') + n + ' ' + p[1]); else row[p[0]] = v == null ? null : fromUnit(v);
+      });
+      rows.push(row);
+    }
+    return { rows: rows, bad: bad };
+  }
+  function pdLive() {
+    var f = $('#pdform'); if (!f) return;
+    var r = readPdForm().rows, ok = r.filter(pdComplete), net = ok.length ? ok.reduce(function (a, x) { return a + x.drain - x.fill; }, 0) : null;
+    $('#pd-total').innerHTML = pdTotalHtml(net);
+    r.forEach(function (x, i) { var m = $('#pd-miss-' + (i + 1)); if (m) m.hidden = !(pdHasData(x) && !pdComplete(x)); });
+  }
+
   function vMore() {
     var pro = isPro();
     return T('<main id="main"><h1>More</h1>') +
@@ -361,13 +413,13 @@
       T('<button class="btn" data-act="backup">Save backup file</button><p></p><button class="btn alt" data-act="restore">Restore from backup</button><p></p><button class="btn alt" data-act="csv">Export spreadsheet (CSV)</button>') +
       '<p class="small muted">' + (S.settings.lastBackup ? T('Last backup: ') + esc(fmtDay(dayKey(S.settings.lastBackup))) : T('No backup saved yet.')) + '</p><input type="file" id="restore-file" accept=".json,application/json" hidden></div>' +
       '<div class="card"><h3>Pro ' + (pro ? '✓' : '<span class="lock">' + esc(C.PRO_PRICE || '') + '</span>') + '</h3><ul class="list">' +
-      T('<li><a class="grow" href="#/labs">Lab results') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/meds">Medicine list') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/report">Printable summary') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pro">' + (pro ? T('Your Pro license') : T('About Pro / enter license key')) + '</a></li></ul></div>' +
+      T('<li><a class="grow" href="#/labs">Lab results') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/meds">Medicine list') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/report">Printable summary') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pd" id="pd-link">' + T('PD day page') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pro">' + (pro ? T('Your Pro license') : T('About Pro / enter license key')) + '</a></li></ul></div>' +
       shareCard() + T('<p><a class="btn alt" href="#/settings">Settings</a></p><p><a class="btn alt" href="#/history">Past days</a></p><p><a class="btn alt" href="#/about">About, privacy & help</a></p><p><a class="btn alt" href="terms.html" id="more-terms">Terms of Use</a></p>') + disc() + '</main>' + nav('#/more');
   }
   function vPro() {
     var pro = isPro(), st = S.settings, ready = !!C.GUMROAD_PRODUCT_ID;
     return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>Dialysis Log Pro</h1>') +
-      '<div class="card"><p><b>' + esc(C.PRO_PRICE || '') + '</b> – ' + esc(C.PRO_PRICE_NOTE || '') + T('</p><ul><li>Trends for 90 days and all time</li><li>Lab results log</li><li>Medicine list</li><li>Printable 30-day summary for appointments</li></ul><p class="small">Free forever, no matter what: drink logging, sessions, full history, backup, CSV export, 30-day trends.</p>') +
+      '<div class="card"><p><b>' + esc(C.PRO_PRICE || '') + '</b> – ' + esc(C.PRO_PRICE_NOTE || '') + T('</p><ul><li>Trends for 90 days and all time</li><li>Lab results log</li><li>Medicine list</li><li>Printable 30-day summary for appointments</li><li>PD day page (four exchanges, total fluid removed)</li></ul><p class="small">Free forever, no matter what: drink logging, sessions, full history, backup, CSV export, 30-day trends.</p>') +
       (pro ? T('<p id="pro-status">✓ Pro is unlocked on this phone') + (st.license.source === 'dev' ? T(' (dev test code)') : '') + T('. Key ') + esc(maskKey(st.license.key)) + '.</p>'
         : (st.license && st.license.revokedAt ? '<p style="color:var(--danger)">' + esc(st.license.reason || T('Your license is no longer active.')) + '</p>' : '') +
           (ready && C.CHECKOUT_URL ? '<a class="btn" id="buy" href="' + esc(C.CHECKOUT_URL) + T('" target="_blank" rel="noopener">Buy Pro on Gumroad</a>') : T('<p id="pro-soon"><b>Pro is coming soon.</b> Everything you log now will be there when it arrives.</p>'))) +
@@ -462,6 +514,7 @@
     else if (h === '#/labs') html = vLabs();
     else if (h === '#/meds') html = vMeds();
     else if (h === '#/report') html = vReport();
+    else if (h === '#/pd' || h.indexOf('#/pd/') === 0) html = vPD(h.slice(5));
     else if (h === '#/about') html = vAbout();
     else html = vToday();
     $('#app').innerHTML = html;
@@ -494,6 +547,14 @@
     sessionsSorted().reverse().forEach(function (s) { rows.push(['session', s.date, s.time, '', '', '', s.preW, s.postW, s.wUnit, s.preSys != null ? s.preSys + '/' + (s.preDia == null ? '' : s.preDia) : '', s.postSys != null ? s.postSys + '/' + (s.postDia == null ? '' : s.postDia) : '', s.uf, s.ufUnit, s.notes]); });
     S.labs.forEach(function (l) { rows.push(['lab', l.date, '', l.value, l.unit, l.name, '', '', '', '', '', '', '', '']); });
     S.meds.forEach(function (m) { rows.push(['medicine', '', '', m.dose, '', m.name, '', '', '', '', '', '', '', m.when]); });
+    Object.keys(S.pd || {}).sort().forEach(function (k) {
+      var any = false;
+      pdDay(k).forEach(function (r, i) {
+        if (r.fill != null) { any = true; rows.push(['pd_fill', k, r.time, toUnit(r.fill), fu() === 'oz' ? 'oz' : 'mL', 'Exchange ' + (i + 1), '', '', '', '', '', '', '', '']); }
+        if (r.drain != null) { any = true; rows.push(['pd_drain', k, r.time, toUnit(r.drain), fu() === 'oz' ? 'oz' : 'mL', 'Exchange ' + (i + 1), '', '', '', '', '', '', '', '']); }
+      });
+      var net = pdNetMl(k); if (any && net != null) rows.push(['pd_removed', k, '', toUnit(net), fu() === 'oz' ? 'oz' : 'mL', 'Drained minus filled', '', '', '', '', '', '', '', '']);
+    });
     return rows.map(function (r) { return r.map(csvCell).join(','); }).join('\r\n') + '\r\n';
   }
   function validBackup(o) { return o && typeof o === 'object' && Array.isArray(o.fluids) && Array.isArray(o.sessions) && o.settings && typeof o.settings === 'object'; }
@@ -506,6 +567,11 @@
     s.fluids = s.fluids.map(function (f) { return { id: String(f.id || uid()), t: +f.t, ml: +f.ml, label: String(f.label || '').slice(0, 40) }; });
     s.labs = s.labs.filter(function (l) { return l && l.name; }).map(function (l) { return { id: String(l.id || uid()), date: String(l.date || today()).slice(0, 10), name: String(l.name).slice(0, 40), value: String(l.value == null ? '' : l.value).slice(0, 20), unit: String(l.unit || '').slice(0, 16) }; });
     s.meds = s.meds.filter(function (m) { return m && m.name; }).map(function (m) { return { id: String(m.id || uid()), name: String(m.name).slice(0, 60), dose: String(m.dose || '').slice(0, 30), when: String(m.when || '').slice(0, 40) }; });
+    var pdo = {}; Object.keys(s.pd || {}).forEach(function (k) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || !Array.isArray(s.pd[k])) return;
+      var rows = []; for (var i = 0; i < PD_ROWS; i++) { var r = s.pd[k][i] || {}; rows.push({ time: /^\d{2}:\d{2}$/.test(r.time || '') ? r.time : '', fill: typeof r.fill === 'number' && isFinite(r.fill) && r.fill >= 0 ? r.fill : null, drain: typeof r.drain === 'number' && isFinite(r.drain) && r.drain >= 0 ? r.drain : null }); }
+      if (rows.some(pdHasData)) pdo[k] = rows;
+    }); s.pd = pdo;
     s.settings.cups = s.settings.cups.filter(function (c) { return c && isFinite(c.ml) && c.ml > 0; }).map(function (c) { return { id: String(c.id || uid()), label: String(c.label || '').slice(0, 24), ml: +c.ml }; });
     s.settings.fluidUnit = s.settings.fluidUnit === 'ml' ? 'ml' : 'oz'; s.settings.weightUnit = s.settings.weightUnit === 'kg' ? 'kg' : 'lb';
     s.settings.limitMl = isFinite(s.settings.limitMl) && s.settings.limitMl > 0 ? +s.settings.limitMl : null;
@@ -559,6 +625,7 @@
         }, { amt: toUnit(f.ml), label: f.label, withTime: true, time: pad(d0.getHours()) + ':' + pad(d0.getMinutes()), del: true });
         break;
       }
+      case 'pd-clear': { var q = +id; ['time', 'fill', 'drain'].forEach(function (p) { $('#pd-' + p + '-' + q).value = ''; }); pdLive(); $('#pd-' + 'fill-' + q).focus(); break; }
       case 'nag-later': st.backupNagAt = Date.now(); save(); render(); break;
       case 'uf-unit': $('#s-ufu').value = v; Array.prototype.forEach.call(el.parentNode.children, function (b) { b.setAttribute('aria-pressed', String(b === el)); }); saveDraft(); break;
       case 'del-session': confirmBox(T('Delete this session?'), T('Delete'), function () { S.sessions = S.sessions.filter(function (s) { return s.id !== id; }); save(); go('#/sessions'); toast(T('Session deleted')); }); break;
@@ -592,7 +659,7 @@
     }
   });
   function saveDraft() { if (location.hash !== '#/session/new' || !$('#sform')) return; S.settings.draft = readSessionForm().f; save(); }
-  document.addEventListener('input', function (e) { if (e.target.closest('#sform')) saveDraft(); });
+  document.addEventListener('input', function (e) { if (e.target.closest('#sform')) saveDraft(); if (e.target.closest('#pdform')) pdLive(); });
   document.addEventListener('submit', function (e) {
     e.preventDefault();
     if (e.target.id === 'sform') {
@@ -600,6 +667,13 @@
       var id = decodeURIComponent(location.hash.slice(10)), s = S.sessions.filter(function (x) { return x.id === id; })[0];
       if (s) Object.assign(s, r.f); else { s = Object.assign({ id: uid(), createdAt: Date.now() }, r.f); S.sessions.push(s); S.settings.draft = null; }
       save(); go('#/session/' + s.id); toast(T('Session saved'));
+    } else if (e.target.id === 'pdform') {
+      if (!isPro()) return;
+      var pr = readPdForm(); if (pr.bad.length) return toast(T('Please check: ') + pr.bad.join(', '), 4000);
+      var pk = e.target.getAttribute('data-day');
+      if (!S.pd) S.pd = {};
+      if (pr.rows.some(pdHasData)) S.pd[pk] = pr.rows; else delete S.pd[pk];
+      save(); render(); toast(T('Day saved'));
     } else if (e.target.id === 'labform') {
       var nm = $('#l-name').value.trim(), val = $('#l-val').value.trim(); if (!nm || !val) return toast(T('Type the test and result'));
       S.labs.push({ id: uid(), date: $('#l-date').value || today(), name: nm.slice(0, 40), value: val.slice(0, 20), unit: $('#l-unit').value.trim().slice(0, 16) }); save(); render(); toast(T('Result added'));
