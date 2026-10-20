@@ -76,31 +76,6 @@ jobs:
           path: shots/
 
   testflight:
-        description: 'Archive and upload to TestFlight (needs the App Store Connect secrets)'
-        type: boolean
-        default: false
-
-jobs:
-  simulator-build:
-    name: Build for simulator (no signing)
-    runs-on: macos-26
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run build:www
-      - run: npx cap sync ios
-      - name: Build
-        run: |
-          xcodebuild -workspace ios/App/App.xcworkspace -scheme App \
-            -configuration Debug -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO build | tail -n 40
-
-  testflight:
     name: Archive and upload to TestFlight
     if: github.event_name == 'workflow_dispatch' && inputs.testflight
     runs-on: macos-26
