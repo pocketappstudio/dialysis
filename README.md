@@ -27,3 +27,13 @@ Tests: `/workspace/dialysis-tests/test_app.py` (Playwright, Gumroad mocked).
 - Support and refunds go through Gumroad only. No email address anywhere.
 - Spanish text (`i18n-es.js`, `*-es.html`) is machine-prepared; review by a native Spanish speaker is recommended.
 - **PD day page (Pro, v1.3.0):** More → PD day page. Four exchanges per day (time, fill, drain); total fluid removed = drained minus filled, plain subtraction, no advice. Rows missing a fill or drain are left out of the total. Stored in `pd` in localStorage, included in backup/restore and CSV (pd_fill, pd_drain, pd_removed rows). Spanish strings in i18n-es.js need a native-speaker review like the rest.
+
+## iPhone app (branch `ios`)
+
+The App Store build lives on the `ios` branch; GitHub Pages keeps serving `main`.
+- Capacitor 6, iOS project in `ios/`. `npm run build:www` copies the web app into the ignored `www/` folder and loads `native/native.js`.
+- Native features: reminders the user sets (local notifications, daily drink-log and weekly session-log reminders; no advice), haptics, the iOS share sheet for "Share today", backup and CSV files, and storage mirrored into Capacitor Preferences.
+- Pro is an Apple in-app purchase (non-consumable `com.pocketappstudio.dialysislog.pro`, $4.99) with Restore Purchases. The Gumroad license path is turned off and hidden in the native build; native Terms and Privacy pages use Apple wording.
+- Bundle id `com.pocketappstudio.dialysislog`, deployment target iOS 15.0, ITSAppUsesNonExemptEncryption=false.
+- CI: `.github/workflows/ios.yml` builds for the simulator on Xcode 26 and captures screenshots (artifact `ios-simulator-screenshots`). The TestFlight job is manual and needs the App Store Connect secrets.
+- Native smoke test with mocked plugins: `tests/native_test.py` (serve `www/` on port 8767).

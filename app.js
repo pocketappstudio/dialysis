@@ -13,6 +13,9 @@
   var APP_URL = 'https://pocketappstudio.github.io/dialysis/';
   /* ---------------- language (English / Spanish). Strings are keyed by their English text; see i18n-es.js. ---------------- */
   var ES = (window.DIALYSIS_I18N && window.DIALYSIS_I18N.es) || {};
+  /* ---------------- native iPhone app (Capacitor). window.Native exists only in the App Store build; the web app never sees it. ---------------- */
+  var NV = window.Native && window.Native.is ? window.Native : null;
+  function buzz(k) { if (NV) NV.haptic(k); }
   function lang() { var p = S && S.settings && S.settings.lang; if (p === 'en' || p === 'es') return p; return /^es\b/i.test(navigator.language || '') ? 'es' : 'en'; }
   function T(s) { return lang() === 'es' && ES[s] != null ? ES[s] : s; }
   function LOC() { return lang() === 'es' ? 'es' : undefined; }
@@ -55,6 +58,7 @@
   function load() { try { S = migrate(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = defaults(); } }
   function urlLang() { var m = /[?&]lang=(en|es)\b/.exec(location.search); if (m && S.settings.lang !== m[1]) { S.settings.lang = m[1]; save(); } }
   function save() {
+    if (NV) NV.mirror(KEY, JSON.stringify(S));
     try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast(T('Could not save – phone storage may be full. Save a backup now.'), 6000); }
     if (S.settings.persisted == null && navigator.storage && navigator.storage.persist) {
       S.settings.persisted = false;
@@ -413,10 +417,12 @@
       T('<button class="btn" data-act="backup">Save backup file</button><p></p><button class="btn alt" data-act="restore">Restore from backup</button><p></p><button class="btn alt" data-act="csv">Export spreadsheet (CSV)</button>') +
       '<p class="small muted">' + (S.settings.lastBackup ? T('Last backup: ') + esc(fmtDay(dayKey(S.settings.lastBackup))) : T('No backup saved yet.')) + '</p><input type="file" id="restore-file" accept=".json,application/json" hidden></div>' +
       '<div class="card"><h3>Pro ' + (pro ? '✓' : '<span class="lock">' + esc(C.PRO_PRICE || '') + '</span>') + '</h3><ul class="list">' +
-      T('<li><a class="grow" href="#/labs">Lab results') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/meds">Medicine list') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/report">Printable summary') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pd" id="pd-link">' + T('PD day page') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pro">' + (pro ? T('Your Pro license') : T('About Pro / enter license key')) + '</a></li></ul></div>' +
+      T('<li><a class="grow" href="#/labs">Lab results') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/meds">Medicine list') + (pro ? '' : ' 🔒') + T('</a></li><li><a class="grow" href="#/report">Printable summary') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pd" id="pd-link">' + T('PD day page') + (pro ? '' : ' 🔒') + '</a></li><li><a class="grow" href="#/pro">' + (NV ? (pro ? T('Your Pro purchase') : T('About Pro')) : pro ? T('Your Pro license') : T('About Pro / enter license key')) + '</a></li></ul></div>' +
+      (NV ? '<div class="card" id="rem-card"><h3>' + T('Reminders') + '</h3><p class="small">' + T('Phone reminders at times you choose, to log drinks or a session.') + '</p><a class="btn alt" href="#/reminders" id="rem-link">' + T('Set reminders') + '</a></div>' : '') +
       shareCard() + T('<p><a class="btn alt" href="#/settings">Settings</a></p><p><a class="btn alt" href="#/history">Past days</a></p><p><a class="btn alt" href="#/about">About, privacy & help</a></p><p><a class="btn alt" href="terms.html" id="more-terms">Terms of Use</a></p>') + disc() + '</main>' + nav('#/more');
   }
   function vPro() {
+    if (NV) return vProNative();
     var pro = isPro(), st = S.settings, ready = !!C.GUMROAD_PRODUCT_ID;
     return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>Dialysis Log Pro</h1>') +
       '<div class="card"><p><b>' + esc(C.PRO_PRICE || '') + '</b> – ' + esc(C.PRO_PRICE_NOTE || '') + T('</p><ul><li>Trends for 90 days and all time</li><li>Lab results log</li><li>Medicine list</li><li>Printable 30-day summary for appointments</li><li>PD day page (four exchanges, total fluid removed)</li></ul><p class="small">Free forever, no matter what: drink logging, sessions, full history, backup, CSV export, 30-day trends.</p>') +
@@ -441,6 +447,7 @@
       T('<div class="card"><h3>Erase</h3><button class="btn danger" data-act="erase">Erase all data on this phone</button></div></main>') + nav('#/more');
   }
   function vAbout() {
+    if (NV) return vAboutNative();
     return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>About Dialysis Log</h1>') + disc() +
       T('<div class="card"><h3>Privacy</h3><p class="small" id="privacy">No accounts, no ads, no analytics, no trackers. What you enter stays only on this phone, in this browser’s storage, and is never uploaded. After the first visit the app works without internet. The one exception: if you enter a Pro license key, it is sent to Gumroad (the store) to check it. <a href="privacy.html">Full privacy page</a>.</p></div>') +
       T('<div class="card"><h3>Put it on your home screen</h3><p class="small"><b>iPhone:</b> in Safari tap Share → “Add to Home Screen”. <b>Android:</b> in Chrome tap ⋮ → “Add to Home screen” / “Install app”.</p></div>') +
@@ -477,6 +484,7 @@
   }
   function fallbackCopy(text) { var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} ta.remove(); }
   function shareOrCopy(data, copyStr) {
+    if (NV) return NV.share(data).catch(function () { return copyText(copyStr); });
     if (navigator.share) return navigator.share(data).catch(function (e) { if (!e || e.name !== 'AbortError') return copyText(copyStr); });
     return copyText(copyStr);
   }
@@ -493,6 +501,55 @@
       '<div class="qr-wrap">' + qrSvg(refUrl('qr'), T('QR code that opens Dialysis Log')) + '</div>' +
       '<button class="btn" data-act="share-app" id="share-app">' + T('Share the app') + '</button><p></p><button class="btn alt" data-act="copy-link" id="copy-link">' + T('Copy link') + '</button>' +
       '<p></p><a class="btn alt" href="' + (lang() === 'es' ? 'log-sheet-es.html' : 'log-sheet.html') + '" id="log-sheet-link">' + T('Printable blank log sheet') + '</a><p class="small muted">' + T('A free paper sheet for the week, for days away from your phone.') + '</p></div>';
+  }
+
+
+  /* ---------------- native-only views (App Store build) ---------------- */
+  function vProNative() {
+    var pro = isPro(), price = (NV.iap.price || C.PRO_PRICE || '');
+    return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>Dialysis Log Pro</h1>') +
+      '<div class="card"><p><b>' + esc(price) + '</b> – ' + esc(T(C.PRO_PRICE_NOTE || '')) + T('</p><ul><li>Trends for 90 days and all time</li><li>Lab results log</li><li>Medicine list</li><li>Printable 30-day summary for appointments</li><li>PD day page (four exchanges, total fluid removed)</li></ul><p class="small">Free forever, no matter what: drink logging, sessions, full history, backup, CSV export, 30-day trends.</p>') +
+      (pro ? '<p id="pro-status">' + T('✓ Pro is unlocked. Thank you!') + '</p>'
+        : '<button class="btn" data-act="iap-buy" id="iap-buy"' + (NV.iap.ready ? '' : ' disabled') + '>' + T('Unlock Pro') + (NV.iap.price ? ' – ' + esc(NV.iap.price) : '') + '</button>' + (NV.iap.ready ? '' : '<p class="small muted">' + T('Connecting to the App Store…') + '</p>')) +
+      '<p></p><button class="btn alt" data-act="iap-restore" id="iap-restore">' + T('Restore Purchases') + '</button><p class="small muted">' + T('Bought Pro before on this Apple ID? Tap Restore Purchases. Payment and refunds are handled by Apple.') + '</p><p id="iap-msg" role="status"></p></div></main>' + nav('#/more');
+  }
+  function vAboutNative() {
+    return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>About Dialysis Log</h1>') + disc() +
+      '<div class="card"><h3>' + T('Privacy') + '</h3><p class="small" id="privacy">' + T('No accounts, no ads, no analytics, no trackers. What you enter stays only on this phone and is never uploaded. The app works without internet. Pro is bought through Apple; the app never sees your payment details.') + ' <a href="' + (lang() === 'es' ? 'privacy-es.html' : 'privacy.html') + '" id="privacy-link-native">' + T('Full privacy page') + '</a>.</p></div>' +
+      '<div class="card"><h3>' + T('New phone?') + '</h3><p class="small">' + T('More → Save backup file, move the file to the new phone, then More → Restore. On the new phone, tap Restore Purchases on the Pro screen.') + '</p></div>' +
+      T('<div class="card"><h3>Terms of Use</h3><p class="small">Dialysis Log is provided as is and is not medical advice. <a href="terms.html" id="about-terms">Read the Terms of Use</a>.</p>') + (function () { var r = termsRecord(); return r && r.at ? T('<p class="small muted" id="agreed-on">You agreed to version ') + esc(r.version) + T(' on ') + esc(new Date(r.at).toLocaleDateString(LOC())) + '.</p>' : ''; })() + '</div>' +
+      '<p class="small muted">' + T('Version') + ' ' + esc(NV.version || '') + '</p></main>' + nav('#/more');
+  }
+  function remCfg() { var r = S.settings.reminders || {}; return { drinkOn: !!r.drinkOn, times: r.times || [], sessOn: !!r.sessOn, days: r.days || [], sessTime: r.sessTime || '' }; }
+  function remTimeRow(t) { return '<div class="rem-row grid2"><label class="field"><span>' + T('Time') + '</span><input type="time" class="rem-t" value="' + esc(t) + '"></label><button type="button" class="btn sm danger" data-act="rem-del">' + T('Remove') + '</button></div>'; }
+  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  function vReminders() {
+    var r = remCfg();
+    return T('<main id="main"><p><a href="#/more">‹ More</a></p><h1>Reminders</h1>') +
+      '<p class="small">' + T('These are only reminders you set yourself, so you remember to log. The app never decides how much to drink or when to have dialysis.') + '</p>' +
+      '<div class="card"><h3>' + T('Log my drinks') + '</h3><label class="field check"><input type="checkbox" id="rem-drink"' + (r.drinkOn ? ' checked' : '') + '> <span>' + T('Remind me every day at these times') + '</span></label><div id="rem-times">' + (r.times.length ? r.times : ['']).map(remTimeRow).join('') + '</div><button type="button" class="btn alt" data-act="rem-add">' + T('Add a time') + '</button></div>' +
+      '<div class="card"><h3>' + T('Log my session') + '</h3><label class="field check"><input type="checkbox" id="rem-sess"' + (r.sessOn ? ' checked' : '') + '> <span>' + T('Remind me on my session days') + '</span></label><div class="seg" role="group" aria-label="' + T('Session days') + '">' + WD.map(function (d, i) { return '<button type="button" class="rem-day" data-act="rem-day" data-v="' + i + '" aria-pressed="' + (r.days.indexOf(i) >= 0) + '">' + T(d) + '</button>'; }).join('') + '</div><label class="field"><span>' + T('Time') + '</span><input type="time" id="rem-stime" value="' + esc(r.sessTime) + '"></label></div>' +
+      '<button class="btn" data-act="rem-save" id="rem-save">' + T('Save reminders') + '</button>' + disc() + '</main>' + nav('#/more');
+  }
+  document.addEventListener('click', function (e) { var b = e.target.closest && e.target.closest('[data-act="rem-day"]'); if (b) b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); });
+  function saveReminders() {
+    var times = Array.prototype.map.call(document.querySelectorAll('.rem-t'), function (i) { return i.value; }).filter(Boolean);
+    var days = Array.prototype.filter.call(document.querySelectorAll('.rem-day'), function (b) { return b.getAttribute('aria-pressed') === 'true'; }).map(function (b) { return +b.getAttribute('data-v'); });
+    var r = { drinkOn: $('#rem-drink').checked, times: times.filter(function (t, i) { return times.indexOf(t) === i; }).slice(0, 8), sessOn: $('#rem-sess').checked, days: days, sessTime: $('#rem-stime').value };
+    if (r.drinkOn && !r.times.length) return toast(T('Add at least one time'));
+    if (r.sessOn && (!r.days.length || !r.sessTime)) return toast(T('Pick your session days and a time'));
+    S.settings.reminders = r; save();
+    NV.scheduleReminders(r, { drinkTitle: T('Dialysis Log'), drinkBody: T('Reminder you set: log your drinks.'), sessBody: T('Reminder you set: log today’s session.') }).then(function (ok) {
+      if (ok === false) return toast(T('Reminders are off for Dialysis Log. Turn on notifications in the iPhone Settings app.'), 6000);
+      buzz('success'); toast(r.drinkOn || r.sessOn ? T('Reminders saved') : T('Reminders turned off'));
+    });
+  }
+  function nativeStart() {
+    NV.iap.on = function (owned) {
+      if (owned && !isPro()) { S.settings.license = { ok: true, source: 'apple', key: 'App Store', at: Date.now() }; save(); buzz('success'); toast(T('✓ Pro is unlocked. Thank you!'), 4000); }
+      if (location.hash === '#/pro') render();
+    };
+    NV.iap.init();
   }
 
   /* ---------------- router ---------------- */
@@ -516,6 +573,7 @@
     else if (h === '#/report') html = vReport();
     else if (h === '#/pd' || h.indexOf('#/pd/') === 0) html = vPD(h.slice(5));
     else if (h === '#/about') html = vAbout();
+    else if (h === '#/reminders' && NV) html = vReminders();
     else html = vToday();
     $('#app').innerHTML = html;
   }
@@ -524,7 +582,7 @@
   /* ---------------- actions ---------------- */
   function addFluid(ml, label, t) {
     var e = { id: uid(), t: t || Date.now(), ml: ml, label: label || '' };
-    S.fluids.push(e); save(); render();
+    S.fluids.push(e); save(); render(); buzz('light');
     toast(T('Added ') + fmtFluid(ml) + T(' – tap Edit to change'), 2600);
   }
   function amountSheet(title, cb, pre) {
@@ -535,6 +593,7 @@
   }
   var amountCb = null;
   function download(name, text, type) {
+    if (NV) return NV.saveFile(name, text, type);
     var blob = new Blob([text], { type: type }), a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -603,7 +662,7 @@
       }
       case 'agree': {
         var bx = $('#agree-box'); if (!bx || !bx.checked) return toast(T('Tick the box first'));
-        try { localStorage.setItem(TERMS_KEY, JSON.stringify({ agreed: true, version: TERMS_VERSION, at: new Date().toISOString() })); } catch (err) { return toast(T('Could not save. Phone storage may be full.'), 5000); }
+        try { var tr = JSON.stringify({ agreed: true, version: TERMS_VERSION, at: new Date().toISOString() }); if (NV) NV.mirror(TERMS_KEY, tr); localStorage.setItem(TERMS_KEY, tr); } catch (err) { return toast(T('Could not save. Phone storage may be full.'), 5000); }
         go('#/'); render(); window.scrollTo(0, 0); break;
       }
       case 'su-skip': st.setupDone = true; save(); go('#/'); break;
@@ -655,6 +714,11 @@
       case 'share-app': { var u = refUrl('share'); shareOrCopy({ title: 'Dialysis Log', text: T('Free dialysis & fluid tracker. No account, works offline:'), url: u }, T('Free dialysis & fluid tracker. No account, works offline:') + ' ' + u); break; }
       case 'copy-link': copyText(refUrl('share'), T('Link copied')); break;
       case 'set-lang': st.lang = v === 'auto' ? null : v; save(); render(); break;
+      case 'iap-buy': { $('#iap-msg').textContent = T('Opening the App Store…'); NV.iap.buy(); break; }
+      case 'iap-restore': { $('#iap-msg').textContent = T('Checking your purchases…'); NV.iap.restore(); setTimeout(function () { var m = $('#iap-msg'); if (m && !isPro()) m.textContent = T('No Pro purchase was found for this Apple ID.'); }, 8000); break; }
+      case 'rem-save': saveReminders(); break;
+      case 'rem-add': { var rl = $('#rem-times'); if (rl.querySelectorAll('input').length >= 8) return toast(T('Up to 8 drink reminders')); var w = document.createElement('div'); w.innerHTML = remTimeRow(''); rl.appendChild(w.firstChild); break; }
+      case 'rem-del': el.closest('.rem-row').remove(); break;
       case 'go-day': { var pk = $('#pick').value; closeSheet(); if (pk) go('#/day/' + pk); break; }
     }
   });
@@ -666,14 +730,14 @@
       var r = readSessionForm(); if (r.bad.length) return toast(T('Please check: ') + r.bad.join(', '), 4000);
       var id = decodeURIComponent(location.hash.slice(10)), s = S.sessions.filter(function (x) { return x.id === id; })[0];
       if (s) Object.assign(s, r.f); else { s = Object.assign({ id: uid(), createdAt: Date.now() }, r.f); S.sessions.push(s); S.settings.draft = null; }
-      save(); go('#/session/' + s.id); toast(T('Session saved'));
+      save(); buzz('success'); go('#/session/' + s.id); toast(T('Session saved'));
     } else if (e.target.id === 'pdform') {
       if (!isPro()) return;
       var pr = readPdForm(); if (pr.bad.length) return toast(T('Please check: ') + pr.bad.join(', '), 4000);
       var pk = e.target.getAttribute('data-day');
       if (!S.pd) S.pd = {};
       if (pr.rows.some(pdHasData)) S.pd[pk] = pr.rows; else delete S.pd[pk];
-      save(); render(); toast(T('Day saved'));
+      save(); buzz('success'); render(); toast(T('Day saved'));
     } else if (e.target.id === 'labform') {
       var nm = $('#l-name').value.trim(), val = $('#l-val').value.trim(); if (!nm || !val) return toast(T('Type the test and result'));
       S.labs.push({ id: uid(), date: $('#l-date').value || today(), name: nm.slice(0, 40), value: val.slice(0, 20), unit: $('#l-unit').value.trim().slice(0, 16) }); save(); render(); toast(T('Result added'));
@@ -704,7 +768,8 @@
   setInterval(function () { if (today() !== lastDay) { lastDay = today(); render(); } }, 30000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden && today() !== lastDay) { lastDay = today(); render(); } });
 
-  load(); urlLang(); render();
+  function boot() { load(); urlLang(); render(); if (NV) nativeStart(); }
+  if (NV && NV.ready) NV.ready.then(boot, boot); else boot();
   window.Dialysis = { state: function () { return JSON.parse(JSON.stringify(S)); }, csv: buildCsv, judge: judge, summary: function () { return summaryText(); }, lang: lang };
   if ('serviceWorker' in navigator && location.protocol !== 'file:') window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   setTimeout(function () { recheckLicense().catch(function () {}); }, 3000);

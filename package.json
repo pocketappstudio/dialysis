@@ -1,0 +1,21 @@
+{
+  "name": "dialysis-log",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Dialysis Log (iPhone app build)",
+  "scripts": {
+    "build:www": "node scripts/build-www.js",
+    "sync": "npm run build:www && npx cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/cli": "^6.2.2",
+    "@capacitor/core": "^6.2.2",
+    "@capacitor/filesystem": "^6.0.3",
+    "@capacitor/haptics": "^6.0.3",
+    "@capacitor/ios": "^6.2.2",
+    "@capacitor/local-notifications": "^6.1.3",
+    "@capacitor/preferences": "^6.0.3",
+    "@capacitor/share": "^6.0.4",
+    "cordova-plugin-purchase": "^13.19.1"
+  }
+}

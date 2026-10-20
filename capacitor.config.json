@@ -1,0 +1,6 @@
+{
+  "appId": "com.pocketappstudio.dialysislog",
+  "appName": "Dialysis Log",
+  "webDir": "www",
+  "ios": { "contentInset": "always", "backgroundColor": "#0B3D91" }
+}
