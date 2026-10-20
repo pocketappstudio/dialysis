@@ -20,6 +20,11 @@
   }
   // One screen per app launch: CI relaunches the app and captures each screen in turn.
   var routes = ['#/', '#/sessions', '#/trends', '#/pd', '#/reminders', '#/more', '#/pro'];
-  var k = fresh ? 0 : +(localStorage.getItem('dialysislog:shot-i') || 0); if (!fresh) localStorage.setItem('dialysislog:shot-i', String(k + 1));
-  location.hash = routes[k % routes.length];
+  // Counter kept in native Preferences (written at once), so each launch shows the next screen.
+  var Pr = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences;
+  if (!Pr) { location.hash = routes[0]; return; }
+  Pr.get({ key: 'shots:i' }).then(function (r) {
+    var k = r && r.value != null ? +r.value : -1;   // -1 = warm-up launch
+    return Pr.set({ key: 'shots:i', value: String(k + 1) }).then(function () { location.hash = routes[Math.max(0, k) % routes.length]; });
+  });
 })();
