@@ -61,11 +61,14 @@ jobs:
             xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
             xcrun simctl install "$UDID" "$APP"
             xcrun simctl launch "$UDID" com.pocketappstudio.dialysislog
-            sleep 12   # first launch: web view warm-up; then the demo steps through screens every 8 s
-            xcrun simctl terminate "$UDID" com.pocketappstudio.dialysislog; sleep 2
-            xcrun simctl launch "$UDID" com.pocketappstudio.dialysislog; sleep 5
+            sleep 10   # first launch: web view warm-up and demo data
+            xcrun simctl terminate "$UDID" com.pocketappstudio.dialysislog || true
             N=$(echo "$DEV" | tr ' ' '-')
-            for i in 1 2 3 4 5 6 7; do xcrun simctl io "$UDID" screenshot "shots/$N-$i.png"; sleep 8; done
+            for i in 1 2 3 4 5 6 7; do
+              xcrun simctl launch "$UDID" com.pocketappstudio.dialysislog; sleep 6
+              xcrun simctl io "$UDID" screenshot "shots/$N-$i.png"
+              xcrun simctl terminate "$UDID" com.pocketappstudio.dialysislog; sleep 1
+            done
             xcrun simctl shutdown "$UDID"
           done
           ls -la shots; sips -g pixelWidth -g pixelHeight shots/*.png | grep -E 'png|pixel'

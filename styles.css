@@ -61,3 +61,8 @@ ul.tsum{margin:0;padding-left:1.1em}ul.tsum li{margin:0 0 10px}
 /* PD day page (Pro) */
 fieldset.pdrow{margin:12px 0}fieldset.pdrow legend{font-weight:800;padding:0 8px;font-size:1.1em}
 fieldset.pdrow .field{margin:8px 0}.pdnav{margin:0 0 4px}.pdnav .btn{width:100%}
+
+/* iPhone app: reminders screen */
+.rem-row{display:flex;gap:12px;align-items:flex-end}.rem-row .field{flex:1;margin:8px 0}.rem-row .btn{margin:8px 0}
+.field.check{display:flex;gap:12px;align-items:center}.field.check>span{margin:0}.field.check input{width:28px;height:28px;flex:none}
+.seg .rem-day{min-width:0;padding-left:4px;padding-right:4px}
